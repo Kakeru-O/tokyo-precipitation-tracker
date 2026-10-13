@@ -126,6 +126,16 @@ models:
               arguments:
                 min_value: 0
                 max_value: 366
+      - name: mean_precipitation_per_measurable_day_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: mean_precipitation_per_precipitation_day_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
 
   - name: mart_tokyo_precipitation_annual_metrics
     columns:
@@ -151,3 +161,36 @@ models:
     columns:
       - name: month_start
         tests: [not_null, unique]
+
+  - name: mart_tokyo_precipitation_period_metrics
+    description: "年間、梅雨期（6〜7月）、台風期（8〜10月）の固定期間比較用mart。"
+    tests:
+      - expression_is_true:
+          arguments:
+            expression: "precipitation_days >= measurable_precipitation_days"
+    columns:
+      - name: year
+        tests: [not_null]
+      - name: period_key
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [annual, rainy_season, typhoon_season]
+      - name: is_complete_period
+        tests: [not_null]
+      - name: period_precipitation_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: mean_precipitation_per_measurable_day_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: mean_precipitation_per_precipitation_day_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
