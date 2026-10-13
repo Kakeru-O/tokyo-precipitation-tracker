@@ -7,7 +7,7 @@
 - `int_tokyo_precipitation_streaks`: 欠測・品質不良・日付欠落で分断する全期間streak
 - `int_tokyo_monthly_precipitation`: 月別降水量・日数・強度・最大日量
 - `int_tokyo_annual_precipitation`: 年別降水量・日数・強度・品質件数
-- `mart_tokyo_precipitation_annual_metrics`: 年次値と年をまたぐ最長streak
+- `mart_tokyo_precipitation_annual_metrics`: 年次値と、暦年境界で切り詰めた年間最長streak
 - `mart_tokyo_precipitation_daily_cumulative`: 可視化向け日別累積
 - `mart_tokyo_precipitation_monthly_metrics`: 可視化向け月別値
 
@@ -20,3 +20,5 @@ uv run dbt build --project-dir dbt --profiles-dir dbt
 ```
 
 日付一意性、コード値、値域、品質件数の整合、降水量と現象なし情報の矛盾、streak長と日付範囲の整合、2026年37日記録を検査する。
+
+全期間のstreakは`int_tokyo_precipitation_streaks`で年をまたいだまま保持する。年次martでは各streakを1月1日〜12月31日に切り詰め、その年に含まれる日数と開始・終了日だけを年間記録として比較する。
