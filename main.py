@@ -166,10 +166,14 @@ def _(annual, complete_annual, mo):
     complete_year_options = [str(year) for year in complete_annual["year"].to_list()]
     target_start_year = mo.ui.dropdown(year_options, value=str(start_year), label="表示開始年")
     target_end_year = mo.ui.dropdown(year_options, value=str(end_year), label="表示終了年")
-    target_controls = mo.hstack([target_start_year, target_end_year], gap=2, justify="start")
+    detail_year = mo.ui.dropdown(year_options, value=str(end_year), label="詳細表示年")
+    target_controls = mo.hstack(
+        [target_start_year, target_end_year, detail_year], gap=2, justify="start", wrap=True
+    )
     return (
         complete_end_year,
         complete_year_options,
+        detail_year,
         start_year,
         target_controls,
         target_end_year,
@@ -197,7 +201,6 @@ def _(
     target_end,
     target_start,
 ):
-    year_pick = alt.selection_point(name="selected_year", fields=["year"], empty=True, clear="dblclick")
     year_axis = alt.Axis(format="d", tickCount=8, labelAngle=0, labelOverlap="greedy")
     year_scale = alt.Scale(domain=[target_start - 1, target_end + 1])
 
@@ -241,41 +244,31 @@ def _(
             alt.Tooltip("precipitation_days:Q", title="降水日数（参考値）", format=",.0f"),
         ],
     )
-    annual_chart = alt.vconcat(
-        (rainfall_line + rainfall_reference).add_params(year_pick).properties(title="年間降水量", width="container", height=190),
-        (days_line + days_reference).properties(title="降水日数", width="container", height=190),
-        spacing=24,
-    ).properties(title="年間降水量・降水日数の長期推移")
-    annual_chart_ui = mo.ui.altair_chart(annual_chart)
+    rainfall_chart = (rainfall_line + rainfall_reference).properties(
+        title="年間降水量の長期推移", width="container", height=220
+    )
+    days_chart = (days_line + days_reference).properties(
+        title="降水日数の長期推移", width="container", height=220
+    )
     incomplete_years = "、".join(str(year) for year in shown_annual.filter(~pl.col("is_complete_calendar_year"))["year"].to_list()) or "なし"
     overview = mo.vstack([
         mo.md("# 東京の雨を100年で見る"), target_controls,
         mo.md(
             f"""東京（北の丸公園）の `{target_start}`〜`{target_end}` 年を表示しています。
             線・平均・ランキングには観測が揃った `{shown_complete.height}` 年だけを使用します。
-            ▲は不完全年・欠測年の参考値です（該当: {incomplete_years}）。グラフの点をクリックすると年詳細が切り替わります。
+            ▲は不完全年・欠測年の参考値です（該当: {incomplete_years}）。「詳細表示年」で年詳細を切り替えます。
 
             **降水日の定義:** 気象庁の「現象なし情報」が `0` の日です。したがって **0.0mmでも微量降水現象があれば降水日**、
             「現象なし情報」が `1` の日は無降水として区別します。"""
-        ), annual_chart_ui,
+        ), rainfall_chart, days_chart,
     ], gap=2)
     overview
-    return (annual_chart_ui,)
+    return
 
 
 @app.cell
-def _(annual_chart_ui, shown_annual):
-    selected_year = int(shown_annual["year"].max())
-    selected = annual_chart_ui.value
-    if selected is not None and len(selected) > 0:
-        if hasattr(selected, "row"):
-            selected_year = int(selected.row(0, named=True)["year"])
-        elif hasattr(selected, "to_dicts"):
-            selected_year = int(selected.to_dicts()[0]["year"])
-        elif isinstance(selected, dict):
-            selected_year = int(selected["year"][0] if isinstance(selected["year"], list) else selected["year"])
-        else:
-            selected_year = int(selected[0]["year"])
+def _(detail_year):
+    selected_year = int(detail_year.value)
     return (selected_year,)
 
 
@@ -312,10 +305,9 @@ def _(
         pl.col("cumulative_precipitation_mm").quantile(.75).alias("p75_cumulative_mm"),
         pl.col("cumulative_precipitation_mm").median().alias("median_cumulative_mm"),
     ).with_columns(pl.date(pl.lit(2004), pl.col("month"), pl.col("day")).alias("plot_date")).sort("plot_date")
-    hidden_date_axis = alt.Axis(labels=False, ticks=False, title=None)
     month_axis = alt.Axis(format="%m月", tickCount=6, labelAngle=0, labelOverlap="greedy")
     bars = alt.Chart(selected_daily).mark_bar(color=COLORS["rain"], opacity=.62).encode(
-        x=alt.X("plot_date:T", title=None, axis=hidden_date_axis),
+        x=alt.X("plot_date:T", title="月", axis=month_axis),
         y=alt.Y("precipitation_mm:Q", title="日降水量（mm）", scale=alt.Scale(zero=True)),
         tooltip=[
             alt.Tooltip("observed_date:T", title="日付", format="%Y/%m/%d"),
@@ -342,11 +334,12 @@ def _(
             alt.Tooltip("cumulative_precipitation_days:Q", title="年内累計降水日数", format=",.0f"),
         ],
     )
-    daily_chart = alt.vconcat(
-        bars.properties(title=f"{selected_year}年の日降水量", width="container", height=190),
-        (band + median + cumulative).properties(title="年内累計降水量", width="container", height=230),
-        spacing=20,
-    ).resolve_scale(x="shared")
+    daily_rainfall_chart = bars.properties(
+        title=f"{selected_year}年の日降水量", width="container", height=210
+    )
+    cumulative_chart = (band + median + cumulative).properties(
+        title="年内累計降水量", width="container", height=250
+    )
     trace_days = int(selected_row["precipitation_days"] - selected_row["measurable_precipitation_days"])
     cards = stat_cards([
         {"label": "年内累計降水量" if is_reference else "年間降水量", "value": format_number(selected_row["annual_precipitation_mm"], 1, " mm"), "caption": "途中時点の参考値" if is_reference else "完全な暦年", "color": COLORS["rain"]},
@@ -356,7 +349,7 @@ def _(
     reference_note = "**参考値:** この年は年途中または欠測を含むため、年間ランキング・平均・期間比較から除外しています。" if is_reference else "この年は完全な暦年として年間統計に含まれます。"
     detail_panel = mo.vstack([
         mo.md(f"## {selected_year}年詳細\n{reference_note}\n\n灰色帯は **完全年（1926〜2025年、欠測年を除く）の年内累積降水量** の25〜75%点、破線は中央値です。日降水量の分布ではありません。"),
-        cards, mo.ui.altair_chart(daily_chart),
+        cards, daily_rainfall_chart, cumulative_chart,
     ], gap=2)
     detail_panel
     return
@@ -364,12 +357,14 @@ def _(
 
 @app.cell
 def _(mo):
-    ranking_metric = mo.ui.radio(
+    ranking_metric = mo.ui.dropdown(
         options={"年間降水量": "annual_precipitation_mm", "降水日数": "precipitation_days", "年内最長連続降水": "longest_precipitation_streak_days"},
-        value="年間降水量", inline=True, label="ランキング指標",
+        value="年間降水量", label="ランキング指標",
     )
     ranking_top_n = mo.ui.dropdown(["3", "5", "10"], value="5", label="上位件数")
-    ranking_controls = mo.hstack([ranking_metric, ranking_top_n], gap=2, justify="start")
+    ranking_controls = mo.hstack(
+        [ranking_metric, ranking_top_n], gap=2, justify="start", wrap=True
+    )
     return ranking_controls, ranking_metric, ranking_top_n
 
 
@@ -419,7 +414,7 @@ def _(
     ranking_panel = mo.vstack([
         mo.md("## 年間ランキング"), ranking_controls,
         mo.md("ランキングは完全な暦年のみ。年内最長連続降水は **1月1日〜12月31日にクリップした値** です。"),
-        rank_html, mo.ui.altair_chart((trend_line + trend_points).properties(title=f"{metric_label}の推移", width="container", height=290)),
+        rank_html, (trend_line + trend_points).properties(title=f"{metric_label}の推移", width="container", height=290),
         mo.md(f"**全期間の年跨ぎを含む最長連続降水:** `{all_time['streak_length']}日`（{all_time['streak_start_date']}〜{all_time['streak_end_date']}）。これは年内ランキングとは別指標です。"),
     ], gap=2)
     ranking_panel
@@ -432,7 +427,9 @@ def _(complete_end_year, complete_year_options, mo, start_year):
     left_end = mo.ui.dropdown(complete_year_options, value="1955" if "1955" in complete_year_options else complete_year_options[29], label="比較A 終了")
     right_start = mo.ui.dropdown(complete_year_options, value="1996" if "1996" in complete_year_options else complete_year_options[-30], label="比較B 開始")
     right_end = mo.ui.dropdown(complete_year_options, value=str(complete_end_year), label="比較B 終了")
-    compare_controls = mo.hstack([left_start, left_end, right_start, right_end], gap=2, justify="start")
+    compare_controls = mo.hstack(
+        [left_start, left_end, right_start, right_end], gap=2, justify="start", wrap=True
+    )
     return compare_controls, left_end, left_start, right_end, right_start
 
 
@@ -520,6 +517,7 @@ def _(COLORS, alt, mo, month_selector, monthly, pl, target_end, target_start):
             "metric:N",
             title="日数の種類",
             scale=alt.Scale(domain=["降水日数（0.0mmを含む）", "0.0mm超の日数"], range=[COLORS["days"], COLORS["cumulative"]]),
+            legend=alt.Legend(orient="bottom", columns=1, title=None),
         ),
         tooltip=[
             alt.Tooltip("year:Q", title="年", format="d"),
@@ -527,15 +525,16 @@ def _(COLORS, alt, mo, month_selector, monthly, pl, target_end, target_start):
             alt.Tooltip("days:Q", title="日数", format=",.0f"),
         ],
     )
-    month_chart = alt.vconcat(
-        monthly_rainfall_chart.properties(title=f"{selected_month}月の降水量", width="container", height=190),
-        monthly_days_chart.properties(title=f"{selected_month}月の降水日数", width="container", height=190),
-        spacing=24,
-    ).properties(title=f"{selected_month}月の比較（完全な月のみ）")
+    monthly_rainfall_chart = monthly_rainfall_chart.properties(
+        title=f"{selected_month}月の降水量", width="container", height=220
+    )
+    monthly_days_chart = monthly_days_chart.properties(
+        title=f"{selected_month}月の降水日数", width="container", height=220
+    )
     month_panel = mo.vstack([
         mo.md("## 月別比較"),
         mo.md("冒頭の表示期間について、選択月の月降水量・降水日数を比較します。月の全日が品質コード8で揃った月だけを表示します。"),
-        month_selector, mo.ui.altair_chart(month_chart),
+        month_selector, monthly_rainfall_chart, monthly_days_chart,
     ], gap=2)
     month_panel
     return
