@@ -131,6 +131,11 @@ models:
           - accepted_range:
               arguments:
                 min_value: 0
+      - name: mean_precipitation_per_precipitation_day_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
 
   - name: mart_tokyo_precipitation_annual_metrics
     columns:
@@ -180,6 +185,11 @@ models:
               arguments:
                 min_value: 0
       - name: mean_precipitation_per_measurable_day_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: mean_precipitation_per_precipitation_day_mm
         tests:
           - accepted_range:
               arguments:

@@ -62,6 +62,8 @@ select
         and rows_present = date_diff('day', expected_start_date, expected_end_date) + 1
         and complete_observation_days = rows_present
     ) as is_complete_period,
+    period_precipitation_mm / nullif(precipitation_days, 0)
+        as mean_precipitation_per_precipitation_day_mm,
     period_precipitation_mm / nullif(measurable_precipitation_days, 0)
         as mean_precipitation_per_measurable_day_mm
 from aggregated

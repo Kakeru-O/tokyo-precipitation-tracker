@@ -136,7 +136,16 @@ def _():
         delta = float(value) - float(valid[metric].mean())
         return f"完全年{valid.height}年中 {rank}位・長期平均比 {delta:+,.{digits}f}{unit}"
 
-    return COLORS, alt, format_number, load_data, mo, pl, rank_caption, stat_cards
+    return (
+        COLORS,
+        alt,
+        format_number,
+        load_data,
+        mo,
+        pl,
+        rank_caption,
+        stat_cards,
+    )
 
 
 @app.cell
@@ -180,7 +189,7 @@ def _(annual, mo):
     target_controls = mo.hstack(
         [target_start_year, target_end_year], gap=2, justify="start", wrap=True
     )
-    return end_year, start_year, target_controls, target_end_year, target_start_year
+    return target_controls, target_end_year, target_start_year
 
 
 @app.cell
@@ -507,13 +516,13 @@ def _(
                 "color": COLORS["days"],
             },
             {
-                "label": "降水日の平均降水量",
+                "label": "降水1日あたりの平均降水量",
                 "value": format_number(
-                    selected_row["mean_precipitation_per_measurable_day_mm"], 1, " mm"
+                    selected_row["mean_precipitation_per_precipitation_day_mm"], 1, " mm"
                 ),
                 "caption": rank_caption(
                     complete_annual,
-                    "mean_precipitation_per_measurable_day_mm",
+                    "mean_precipitation_per_precipitation_day_mm",
                     selected_year,
                     1,
                     " mm",
@@ -551,7 +560,7 @@ def _(mo):
         options={
             "年間降水量": "annual_precipitation_mm",
             "降水日数": "precipitation_days",
-            "降水日の平均降水量": "mean_precipitation_per_measurable_day_mm",
+            "降水1日あたりの平均降水量": "mean_precipitation_per_precipitation_day_mm",
             "最大日降水量": "max_daily_precipitation_mm",
             "年内最長連続降水": "longest_precipitation_streak_days",
         },
@@ -580,8 +589,8 @@ def _(
     _ranking_specs = {
         "annual_precipitation_mm": ("年間降水量", " mm", 1),
         "precipitation_days": ("降水日数", "日", 0),
-        "mean_precipitation_per_measurable_day_mm": (
-            "降水日の平均降水量",
+        "mean_precipitation_per_precipitation_day_mm": (
+            "降水1日あたりの平均降水量",
             " mm",
             1,
         ),
@@ -651,7 +660,7 @@ def _(mo):
         options={
             "期間降水量": "period_precipitation_mm",
             "降水日数": "precipitation_days",
-            "降水日の平均降水量": "mean_precipitation_per_measurable_day_mm",
+            "降水1日あたりの平均降水量": "mean_precipitation_per_precipitation_day_mm",
             "最大日降水量": "max_daily_precipitation_mm",
         },
         value="期間降水量",
@@ -680,8 +689,8 @@ def _(
     _period_specs = {
         "period_precipitation_mm": ("期間降水量", "mm", ",.1f"),
         "precipitation_days": ("降水日数", "日", ",.0f"),
-        "mean_precipitation_per_measurable_day_mm": (
-            "降水日の平均降水量",
+        "mean_precipitation_per_precipitation_day_mm": (
+            "降水1日あたりの平均降水量",
             "mm",
             ",.1f",
         ),
@@ -772,7 +781,8 @@ def _(mo):
                 - 出典は気象庁「過去の気象データ・ダウンロード」の東京（北の丸公園、地点47662）日別値です。
                 - 集計値には品質コード8（正常値）の観測だけを使います。欠測・資料不足を含む年や、年途中の値は参考値として示します。
                 - 「降水日数」は、気象庁の現象なし情報から降水現象があったと判断できる日数です。0.0mmでも微量の降水現象があれば含みます。
-                - 「降水日の平均降水量」は `期間降水量 ÷ 0.0mm超の降水日数` です。0.0mmの日は分母に含めません。
+                - 「降水1日あたりの平均降水量」は `期間降水量 ÷ 降水日数` です。0.0mmでも降水現象が観測された日は分母に含めます。
+                - 0.0mm超の日だけを分母にする平均値もデータ上は補助指標として保持しますが、画面の主要指標には使用しません。
                 - 灰色の累積帯は、完全年の各月日における累積降水量の25〜75%点です。日降水量の分布ではありません。
                 """
             )

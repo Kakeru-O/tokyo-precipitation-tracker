@@ -16,6 +16,9 @@ select
         / nullif(sum(case when is_precipitation_day then 1 else 0 end), 0)
         as mean_precipitation_per_phenomenon_day_mm,
     sum(case when is_complete_observation then precipitation_mm end)
+        / nullif(sum(case when is_precipitation_day then 1 else 0 end), 0)
+        as mean_precipitation_per_precipitation_day_mm,
+    sum(case when is_complete_observation then precipitation_mm end)
         / nullif(sum(case when is_measurable_precipitation_day then 1 else 0 end), 0)
         as mean_precipitation_per_measurable_day_mm,
     max(case when is_complete_observation then precipitation_mm end) as max_daily_precipitation_mm
