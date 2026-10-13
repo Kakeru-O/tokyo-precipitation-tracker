@@ -22,6 +22,11 @@ EXPORTS = {
         from mart.mart_tokyo_precipitation_monthly_metrics
         order by month_start
     """,
+    "period_metrics.csv": """
+        select *
+        from mart.mart_tokyo_precipitation_period_metrics
+        order by period_key, year
+    """,
     "streaks.csv": """
         select *
         from int.int_tokyo_precipitation_streaks

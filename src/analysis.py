@@ -10,6 +10,7 @@ TABLES = {
     "annual": "mart.mart_tokyo_precipitation_annual_metrics",
     "daily": "mart.mart_tokyo_precipitation_daily_cumulative",
     "monthly": "mart.mart_tokyo_precipitation_monthly_metrics",
+    "periods": "mart.mart_tokyo_precipitation_period_metrics",
     "streaks": "int.int_tokyo_precipitation_streaks",
 }
 
@@ -58,6 +59,7 @@ def load_table(name: str, root: Path | None = None) -> pl.DataFrame:
         order_by = "year" if name == "annual" else {
             "daily": "observed_date",
             "monthly": "month_start",
+            "periods": "period_key, year",
             "streaks": "streak_start_date",
         }[name]
         return query_polars(
