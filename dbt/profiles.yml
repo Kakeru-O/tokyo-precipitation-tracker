@@ -1,0 +1,8 @@
+tokyo_precipitation_tracker:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: tokyo_precipitation.duckdb
+      schema: main
+      threads: 4
