@@ -248,8 +248,13 @@ def _(
                 "annual_precipitation_mm:Q",
                 title="降水量（mm）",
                 axis=alt.Axis(
+                    orient="left",
                     titleColor=COLORS["rain_dark"],
                     tickCount=6,
+                    ticks=True,
+                    labels=True,
+                    domain=True,
+                    format=",.0f",
                     labelPadding=5,
                     titlePadding=12,
                 ),
@@ -298,6 +303,10 @@ def _(
                     titleColor=COLORS["days"],
                     grid=False,
                     tickCount=6,
+                    ticks=True,
+                    labels=True,
+                    domain=True,
+                    format=",.0f",
                     labelPadding=8,
                     titlePadding=16,
                 ),
@@ -331,10 +340,8 @@ def _(
             ],
         )
     )
-    rainfall_group = alt.layer(rainfall_bars, reference_points).resolve_scale(y="shared")
-    days_group = alt.layer(days_line, days_reference).resolve_scale(y="shared")
     annual_chart = (
-        alt.layer(rainfall_group, days_group)
+        alt.layer(rainfall_bars, reference_points, days_line, days_reference)
         .resolve_scale(y="independent")
         .add_params(year_selection)
         .properties(
