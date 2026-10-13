@@ -134,7 +134,7 @@ def _():
         )
         rank = int(valid.filter(pl.col("year") == year)["rank"].item())
         delta = float(value) - float(valid[metric].mean())
-        return f"完全年{valid.height}年中 {rank}位・長期平均比 {delta:+,.{digits}f}{unit}"
+        return f"通年データがそろった{valid.height}年中 {rank}位・長期平均比 {delta:+,.{digits}f}{unit}"
 
     return (
         COLORS,
@@ -209,7 +209,6 @@ def _(
     COLORS,
     alt,
     mo,
-    pl,
     shown_annual,
     shown_complete,
     target_controls,
@@ -222,27 +221,22 @@ def _(
         empty=True,
         clear="dblclick",
     )
-    chart_data = shown_annual.with_columns(
-        pl.when(pl.col("is_complete_calendar_year"))
-        .then(pl.lit("暦年の観測完了"))
-        .when(
-            (pl.col("period_end_date").dt.month() < 12)
-            | (pl.col("period_end_date").dt.day() < 31)
-        )
-        .then(
-            pl.format(
-                "{}月{}日時点の参考値",
-                pl.col("period_end_date").dt.month(),
-                pl.col("period_end_date").dt.day(),
-            )
-        )
-        .otherwise(pl.lit("欠測を含む参考値"))
-        .alias("status_label")
-    )
+    chart_data = shown_annual
+    _rainfall_top = float(chart_data["annual_precipitation_mm"].max()) * 1.08
+    _days_top = float(chart_data["precipitation_days"].max()) * 1.08
+    _rainfall_scale = alt.Scale(domain=[0, _rainfall_top], nice=True)
+    _days_scale = alt.Scale(domain=[0, _days_top], nice=True)
     x_encoding = alt.X(
         "year:Q",
         title="年（クリックで詳細を表示）",
-        axis=alt.Axis(format="d", tickCount=8, labelAngle=0, labelOverlap="greedy"),
+        axis=alt.Axis(
+            format="d",
+            tickCount=8,
+            labelAngle=0,
+            labelOverlap="greedy",
+            labelPadding=6,
+            titlePadding=12,
+        ),
         scale=alt.Scale(domain=[target_start - 1, target_end + 1]),
     )
     rainfall_bars = (
@@ -253,15 +247,19 @@ def _(
             y=alt.Y(
                 "annual_precipitation_mm:Q",
                 title="降水量（mm）",
-                axis=alt.Axis(titleColor=COLORS["rain_dark"]),
-                scale=alt.Scale(zero=True),
+                axis=alt.Axis(
+                    titleColor=COLORS["rain_dark"],
+                    tickCount=6,
+                    labelPadding=5,
+                    titlePadding=12,
+                ),
+                scale=_rainfall_scale,
             ),
             opacity=alt.condition(year_selection, alt.value(0.82), alt.value(0.25)),
             tooltip=[
                 alt.Tooltip("year:Q", title="年", format="d"),
                 alt.Tooltip("annual_precipitation_mm:Q", title="降水量", format=",.1f"),
                 alt.Tooltip("precipitation_days:Q", title="降水日数", format=",.0f"),
-                alt.Tooltip("status_label:N", title="集計状態"),
             ],
         )
     )
@@ -271,58 +269,76 @@ def _(
             alt.FieldEqualPredicate(field="is_complete_calendar_year", equal=False)
         )
         .mark_point(
-            shape="triangle-up", size=95, filled=True, color=COLORS["reference"]
+            shape="triangle-up", size=95, filled=True, color=COLORS["rain_dark"]
         )
         .encode(
             x=x_encoding,
-            y=alt.Y("annual_precipitation_mm:Q", title="降水量（mm）"),
+            y=alt.Y(
+                "annual_precipitation_mm:Q",
+                title=None,
+                axis=None,
+                scale=_rainfall_scale,
+            ),
             tooltip=[
                 alt.Tooltip("year:Q", title="年", format="d"),
                 alt.Tooltip("annual_precipitation_mm:Q", title="参考値", format=",.1f"),
-                alt.Tooltip("status_label:N", title="集計状態"),
             ],
         )
     )
     days_line = (
         alt.Chart(chart_data)
-        .mark_line(point=False, strokeWidth=2.2, color=COLORS["days"])
+        .mark_line(point=True, strokeWidth=2.2, color=COLORS["days"])
         .encode(
             x=x_encoding,
             y=alt.Y(
                 "precipitation_days:Q",
                 title="降水日数（日）",
-                axis=alt.Axis(orient="right", titleColor=COLORS["days"], grid=False),
-                scale=alt.Scale(zero=True),
+                axis=alt.Axis(
+                    orient="right",
+                    titleColor=COLORS["days"],
+                    grid=False,
+                    tickCount=6,
+                    labelPadding=8,
+                    titlePadding=16,
+                ),
+                scale=_days_scale,
             ),
-        )
-    )
-    days_points = (
-        alt.Chart(chart_data)
-        .mark_point(filled=True, size=40, color=COLORS["days"])
-        .encode(
-            x=x_encoding,
-            y=alt.Y("precipitation_days:Q", title="降水日数（日）"),
-            opacity=alt.condition(year_selection, alt.value(1), alt.value(0.28)),
             tooltip=[
                 alt.Tooltip("year:Q", title="年", format="d"),
                 alt.Tooltip("precipitation_days:Q", title="降水日数", format=",.0f"),
                 alt.Tooltip("annual_precipitation_mm:Q", title="降水量", format=",.1f"),
-                alt.Tooltip("status_label:N", title="集計状態"),
             ],
         )
     )
+    days_reference = (
+        alt.Chart(chart_data)
+        .transform_filter(
+            alt.FieldEqualPredicate(field="is_complete_calendar_year", equal=False)
+        )
+        .mark_point(
+            shape="triangle-up", filled=True, size=95, color=COLORS["days"]
+        )
+        .encode(
+            x=x_encoding,
+            y=alt.Y(
+                "precipitation_days:Q", title=None, axis=None, scale=_days_scale
+            ),
+            tooltip=[
+                alt.Tooltip("year:Q", title="年", format="d"),
+                alt.Tooltip(
+                    "precipitation_days:Q", title="降水日数（参考値）", format=",.0f"
+                ),
+            ],
+        )
+    )
+    rainfall_group = alt.layer(rainfall_bars, reference_points).resolve_scale(y="shared")
+    days_group = alt.layer(days_line, days_reference).resolve_scale(y="shared")
     annual_chart = (
-        alt.layer(rainfall_bars, reference_points, days_line, days_points)
+        alt.layer(rainfall_group, days_group)
         .resolve_scale(y="independent")
         .add_params(year_selection)
         .properties(
-            title={
-                "text": "東京の降水量と雨の日の長期推移",
-                "subtitle": [
-                    "青い棒＝降水量（左軸） / 緑の線＝降水日数（右軸）",
-                    "▲は年途中または欠測を含む参考値",
-                ],
-            },
+            title="年間降水量と降水日数の推移",
             width="container",
             height=340,
         )
@@ -345,8 +361,13 @@ def _(
             ),
             target_controls,
             mo.md(
-                f"`{target_start}`〜`{target_end}`年を表示（比較に使える完全年は"
+                f"`{target_start}`〜`{target_end}`年を表示（1年分の観測がそろい、比較に使える年は"
                 f"`{shown_complete.height}`年）。\n\n{latest_note}"
+            ),
+            mo.md(
+                f"<span style='color:{COLORS['rain_dark']}'><b>青い棒:</b> 年間降水量（左軸）</span>　"
+                f"<span style='color:{COLORS['days']}'><b>緑の線:</b> 降水日数（右軸）</span>　"
+                "▲ 年途中または欠測を含む参考値"
             ),
             annual_chart_ui,
         ],
@@ -478,7 +499,7 @@ def _(
         )
     )
     cumulative_chart = (band + median + cumulative).properties(
-        title="年内累計降水量（灰色帯は完全年の25〜75%点、破線は中央値）",
+        title="年内累計降水量（灰色帯は通年データがそろった年の25〜75%点、破線は中央値）",
         width="container",
         height=260,
     )
@@ -493,7 +514,7 @@ def _(
             f"（{_detail_end_date.month}月{_detail_end_date.day}日時点）"
         )
     reference_note = (
-        "この年は完全な暦年として順位と長期平均との差を表示します。"
+        "この年は1年分の観測がそろっているため、順位と長期平均との差を表示します。"
         if not is_reference
         else "**参考値:** 年途中または欠測を含むため、順位・長期平均の計算には含めません。"
     )
@@ -555,220 +576,249 @@ def _(
 
 
 @app.cell
-def _(mo):
-    ranking_metric = mo.ui.dropdown(
-        options={
-            "年間降水量": "annual_precipitation_mm",
-            "降水日数": "precipitation_days",
-            "降水1日あたりの平均降水量": "mean_precipitation_per_precipitation_day_mm",
-            "最大日降水量": "max_daily_precipitation_mm",
-            "年内最長連続降水": "longest_precipitation_streak_days",
-        },
-        value="年間降水量",
-        label="ランキング指標",
+def _(complete_annual, mo):
+    _comparison_years = [str(year) for year in complete_annual["year"].to_list()]
+    _comparison_start = int(_comparison_years[0])
+    _comparison_end = int(_comparison_years[-1])
+    compare_a_start = mo.ui.dropdown(
+        _comparison_years,
+        value="1926" if "1926" in _comparison_years else _comparison_years[0],
+        label="期間A 開始年",
     )
-    ranking_top_n = mo.ui.dropdown(["3", "5", "10"], value="5", label="上位件数")
-    ranking_controls = mo.hstack(
-        [ranking_metric, ranking_top_n], gap=2, justify="start", wrap=True
+    compare_a_end = mo.ui.dropdown(
+        _comparison_years,
+        value="1955" if "1955" in _comparison_years else str(min(_comparison_start + 29, _comparison_end)),
+        label="期間A 終了年",
     )
-    return ranking_controls, ranking_metric, ranking_top_n
+    compare_b_start = mo.ui.dropdown(
+        _comparison_years,
+        value="1996" if "1996" in _comparison_years else str(max(_comparison_start, _comparison_end - 29)),
+        label="期間B 開始年",
+    )
+    compare_b_end = mo.ui.dropdown(
+        _comparison_years,
+        value="2025" if "2025" in _comparison_years else _comparison_years[-1],
+        label="期間B 終了年",
+    )
+    compare_controls = mo.hstack(
+        [compare_a_start, compare_a_end, compare_b_start, compare_b_end],
+        gap=2,
+        justify="start",
+        wrap=True,
+    )
+    return (
+        compare_a_end,
+        compare_a_start,
+        compare_b_end,
+        compare_b_start,
+        compare_controls,
+    )
 
 
 @app.cell
 def _(
     COLORS,
+    compare_a_end,
+    compare_a_start,
+    compare_b_end,
+    compare_b_start,
+    compare_controls,
     complete_annual,
     format_number,
     mo,
-    ranking_controls,
-    ranking_metric,
-    ranking_top_n,
-    streaks,
+    pl,
+    stat_cards,
 ):
-    _ranking_metric_name = ranking_metric.value
-    _ranking_specs = {
-        "annual_precipitation_mm": ("年間降水量", " mm", 1),
-        "precipitation_days": ("降水日数", "日", 0),
-        "mean_precipitation_per_precipitation_day_mm": (
-            "降水1日あたりの平均降水量",
-            " mm",
-            1,
-        ),
-        "max_daily_precipitation_mm": ("最大日降水量", " mm", 1),
-        "longest_precipitation_streak_days": ("年内最長連続降水", "日", 0),
-    }
-    _ranking_label, _ranking_unit, _ranking_digits = _ranking_specs[_ranking_metric_name]
-    ranked = complete_annual.drop_nulls([_ranking_metric_name]).sort(_ranking_metric_name, descending=True).head(
-        int(ranking_top_n.value)
+    _a_start, _a_end = sorted((int(compare_a_start.value), int(compare_a_end.value)))
+    _b_start, _b_end = sorted((int(compare_b_start.value), int(compare_b_end.value)))
+    _period_a = complete_annual.filter(pl.col("year").is_between(_a_start, _a_end))
+    _period_b = complete_annual.filter(pl.col("year").is_between(_b_start, _b_end))
+    _label_a = f"{_a_start}〜{_a_end}年（{_period_a.height}年）"
+    _label_b = f"{_b_start}〜{_b_end}年（{_period_b.height}年）"
+    _comparison_specs = [
+        ("年間降水量", "annual_precipitation_mm", 1, "mm"),
+        ("降水日数", "precipitation_days", 1, "日"),
+        ("降水1日あたりの平均降水量", "mean_precipitation_per_precipitation_day_mm", 1, "mm"),
+        ("最大日降水量", "max_daily_precipitation_mm", 1, "mm"),
+        ("年内最長連続降水", "longest_precipitation_streak_days", 1, "日"),
+    ]
+    _comparison_rows = []
+    for _label, _field, _digits, _unit in _comparison_specs:
+        _mean_a = _period_a[_field].mean()
+        _mean_b = _period_b[_field].mean()
+        _comparison_rows.append(
+            (
+                _label,
+                format_number(_mean_a, _digits, _unit),
+                format_number(_mean_b, _digits, _unit),
+                f"{float(_mean_b) - float(_mean_a):+,.{_digits}f}{_unit}",
+            )
+        )
+    _comparison_table = pl.DataFrame(
+        _comparison_rows,
+        schema=["指標", _label_a, _label_b, "差（B−A）"],
+        orient="row",
     )
-    rank_rows = "".join(
-        f"<div class='rank-row'><b>{index + 1}</b><span>{int(row['year'])}年</span>"
-        f"<strong>{format_number(row[_ranking_metric_name], _ranking_digits, _ranking_unit)}</strong></div>"
-        for index, row in enumerate(ranked.iter_rows(named=True))
+    _comparison_cards = stat_cards(
+        [
+            {
+                "label": "年間降水量の差",
+                "value": f"{float(_period_b['annual_precipitation_mm'].mean()) - float(_period_a['annual_precipitation_mm'].mean()):+,.1f} mm",
+                "caption": f"{_label_a} → {_label_b}",
+                "color": COLORS["rain"],
+            },
+            {
+                "label": "降水日数の差",
+                "value": f"{float(_period_b['precipitation_days'].mean()) - float(_period_a['precipitation_days'].mean()):+,.1f}日",
+                "caption": "0.0mmの微量降水日を含む",
+                "color": COLORS["days"],
+            },
+            {
+                "label": "降水1日あたりの差",
+                "value": f"{float(_period_b['mean_precipitation_per_precipitation_day_mm'].mean()) - float(_period_a['mean_precipitation_per_precipitation_day_mm'].mean()):+,.1f} mm",
+                "caption": "各期間の年平均同士の差",
+                "color": COLORS["intensity"],
+            },
+        ]
     )
-    rank_html = mo.Html(
+    mo.vstack(
+        [
+            mo.md("## 2つの年代を比べる"),
+            mo.md("1年分の観測がそろった年だけを使い、2つの期間の年平均を比較します。"),
+            compare_controls,
+            _comparison_cards,
+            mo.ui.table(_comparison_table, pagination=False),
+        ],
+        gap=2,
+    )
+    return
+
+
+@app.cell
+def _(COLORS, complete_annual, format_number, mo, streaks):
+    _ranking_specs = [
+        ("年間降水量", "annual_precipitation_mm", " mm", 1, COLORS["rain"]),
+        ("降水日数", "precipitation_days", "日", 0, COLORS["days"]),
+        ("降水1日あたりの平均降水量", "mean_precipitation_per_precipitation_day_mm", " mm", 1, COLORS["intensity"]),
+        ("最大日降水量", "max_daily_precipitation_mm", " mm", 1, COLORS["cumulative"]),
+        ("年内最長連続降水", "longest_precipitation_streak_days", "日", 0, COLORS["reference"]),
+    ]
+    _ranking_boards = []
+    for _label, _field, _unit, _digits, _color in _ranking_specs:
+        _ranked = complete_annual.drop_nulls([_field]).sort(_field, descending=True).head(5)
+        _rows = "".join(
+            f"<div class='rank-row'><b>{_index + 1}</b><span>{int(_row['year'])}年</span>"
+            f"<strong>{format_number(_row[_field], _digits, _unit)}</strong></div>"
+            for _index, _row in enumerate(_ranked.iter_rows(named=True))
+        )
+        _ranking_boards.append(
+            f"<section class='rank-board' style='--rank-color:{_color}'>"
+            f"<h3>{_label}</h3>{_rows}</section>"
+        )
+    _rank_html = mo.Html(
         f"""
         <style>
-          .rank-board{{width:min(100%,680px);background:#fff;border:1px solid #dbe6e9;
-            border-top:5px solid {COLORS['rain']};border-radius:9px;padding:10px 15px;box-sizing:border-box;}}
-          .rank-row{{display:grid;grid-template-columns:32px minmax(80px,1fr) auto;align-items:center;
-            gap:8px;min-height:42px;border-top:1px solid #edf2f3;}}
-          .rank-row:first-child{{border:0}}.rank-row b,.rank-row strong{{color:{COLORS['rain_dark']}}}
-          .rank-row strong{{font-size:16px;text-align:right;}}
-        </style><div class='rank-board'>{rank_rows}</div>
+          .rank-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}}
+          .rank-board{{background:#fff;border:1px solid #dbe6e9;border-top:5px solid var(--rank-color);
+            border-radius:9px;padding:10px 15px;box-sizing:border-box;}}
+          .rank-board h3{{font-size:16px;margin:3px 0 8px;color:#18313d;}}
+          .rank-row{{display:grid;grid-template-columns:28px minmax(72px,1fr) auto;align-items:center;
+            gap:8px;min-height:38px;border-top:1px solid #edf2f3;}}
+          .rank-row b,.rank-row strong{{color:var(--rank-color)}}.rank-row strong{{text-align:right;}}
+        </style><div class='rank-grid'>{''.join(_ranking_boards)}</div>
         """
     )
-    all_time = (
+    _all_time = (
         streaks.filter(streaks["streak_type"] == "precipitation")
         .sort("streak_length", descending=True)
         .head(1)
         .row(0, named=True)
     )
-    ranking_panel = mo.vstack(
+    mo.vstack(
         [
             mo.md("## 年間ランキング"),
+            mo.md("1年分の観測がそろった年を対象に、5つの指標の上位5年をまとめて表示します。"),
+            _rank_html,
             mo.md(
-                "完全年だけを対象に、雨の量・頻度・強さ・続き方を順位で比べます。"
-            ),
-            ranking_controls,
-            mo.md(f"### {_ranking_label}"),
-            rank_html,
-            mo.md(
-                f"**全期間の年跨ぎを含む最長連続降水:** `{all_time['streak_length']}日` "
-                f"（{all_time['streak_start_date']}〜{all_time['streak_end_date']}）。"
+                f"**全期間の年跨ぎを含む最長連続降水:** `{_all_time['streak_length']}日` "
+                f"（{_all_time['streak_start_date']}〜{_all_time['streak_end_date']}）。"
                 "年内ランキングの連続日数は暦年の端で区切っています。"
             ),
         ],
         gap=2,
     )
-    ranking_panel
     return
 
 
 @app.cell
-def _(mo):
-    period_selector = mo.ui.dropdown(
-        options={
-            "年間": "annual",
-            "梅雨期（6〜7月）": "rainy_season",
-            "台風期（8〜10月）": "typhoon_season",
-        },
-        value="梅雨期（6〜7月）",
-        label="集計期間",
-    )
-    period_metric = mo.ui.dropdown(
-        options={
-            "期間降水量": "period_precipitation_mm",
-            "降水日数": "precipitation_days",
-            "降水1日あたりの平均降水量": "mean_precipitation_per_precipitation_day_mm",
-            "最大日降水量": "max_daily_precipitation_mm",
-        },
-        value="期間降水量",
-        label="比較指標",
-    )
-    period_controls = mo.hstack(
-        [period_selector, period_metric], gap=2, justify="start", wrap=True
-    )
-    return period_controls, period_metric, period_selector
-
-
-@app.cell
-def _(
-    COLORS,
-    alt,
-    mo,
-    period_controls,
-    period_metric,
-    period_selector,
-    periods,
-    pl,
-    target_end,
-    target_start,
-):
-    _period_metric_name = period_metric.value
-    _period_specs = {
-        "period_precipitation_mm": ("期間降水量", "mm", ",.1f"),
-        "precipitation_days": ("降水日数", "日", ",.0f"),
-        "mean_precipitation_per_precipitation_day_mm": (
-            "降水1日あたりの平均降水量",
-            "mm",
-            ",.1f",
-        ),
-        "max_daily_precipitation_mm": ("最大日降水量", "mm", ",.1f"),
-    }
-    _period_metric_label, _period_unit, _period_number_format = _period_specs[_period_metric_name]
-    period_view = (
-        periods.filter(
-            (pl.col("period_key") == period_selector.value)
-            & pl.col("year").is_between(target_start, target_end)
+def _(COLORS, alt, mo, periods, pl, target_end, target_start):
+    _period_view = periods.filter(pl.col("year").is_between(target_start, target_end))
+    _complete_periods = _period_view.filter(pl.col("is_complete_period"))
+    _reference_periods = _period_view.filter(~pl.col("is_complete_period"))
+    _period_domain = ["年間", "梅雨期（6〜7月）", "台風期（8〜10月）"]
+    _period_colors = [COLORS["rain"], COLORS["days"], COLORS["cumulative"]]
+    _fixed_period_specs = [
+        ("期間降水量", "period_precipitation_mm", "mm", ",.1f"),
+        ("降水日数", "precipitation_days", "日", ",.0f"),
+        ("降水1日あたりの平均降水量", "mean_precipitation_per_precipitation_day_mm", "mm", ",.1f"),
+        ("最大日降水量", "max_daily_precipitation_mm", "mm", ",.1f"),
+    ]
+    _fixed_period_charts = []
+    for _label, _field, _unit, _number_format in _fixed_period_specs:
+        _x = alt.X(
+            "year:Q",
+            title="年",
+            axis=alt.Axis(format="d", tickCount=8, labelAngle=0, labelOverlap="greedy"),
+            scale=alt.Scale(domain=[target_start - 1, target_end + 1]),
         )
-        .with_columns(
-            pl.when(pl.col("is_complete_period"))
-            .then(pl.lit("集計期間の観測完了"))
-            .when(pl.col("observed_end_date") < pl.col("expected_end_date"))
-            .then(
-                pl.format(
-                    "{}月{}日時点の参考値",
-                    pl.col("observed_end_date").dt.month(),
-                    pl.col("observed_end_date").dt.day(),
-                )
+        _color = alt.Color(
+            "period_label:N",
+            title=None,
+            scale=alt.Scale(domain=_period_domain, range=_period_colors),
+            legend=alt.Legend(orient="bottom", columns=3),
+        )
+        _lines = (
+            alt.Chart(_complete_periods)
+            .mark_line(point=True, strokeWidth=2.1)
+            .encode(
+                x=_x,
+                y=alt.Y(f"{_field}:Q", title=f"{_label}（{_unit}）", scale=alt.Scale(zero=True)),
+                color=_color,
+                tooltip=[
+                    alt.Tooltip("year:Q", title="年", format="d"),
+                    alt.Tooltip("period_label:N", title="期間"),
+                    alt.Tooltip(f"{_field}:Q", title=_label, format=_number_format),
+                ],
             )
-            .otherwise(pl.lit("欠測を含む参考値"))
-            .alias("status_label")
         )
-    )
-    complete_periods = period_view.filter(pl.col("is_complete_period"))
-    reference_periods = period_view.filter(~pl.col("is_complete_period"))
-    year_axis = alt.X(
-        "year:Q",
-        title="年",
-        axis=alt.Axis(format="d", tickCount=8, labelAngle=0, labelOverlap="greedy"),
-        scale=alt.Scale(domain=[target_start - 1, target_end + 1]),
-    )
-    period_line = (
-        alt.Chart(complete_periods)
-        .mark_line(point=True, strokeWidth=2.3, color=COLORS["rain"])
-        .encode(
-            x=year_axis,
-            y=alt.Y(f"{_period_metric_name}:Q", title=f"{_period_metric_label}（{_period_unit}）", scale=alt.Scale(zero=True)),
-            tooltip=[
-                alt.Tooltip("year:Q", title="年", format="d"),
-                alt.Tooltip(f"{_period_metric_name}:Q", title=_period_metric_label, format=_period_number_format),
-                alt.Tooltip("status_label:N", title="集計状態"),
-            ],
+        _references = (
+            alt.Chart(_reference_periods)
+            .mark_point(shape="triangle-up", size=80, filled=True)
+            .encode(
+                x=_x,
+                y=alt.Y(f"{_field}:Q", title=f"{_label}（{_unit}）"),
+                color=_color,
+                tooltip=[
+                    alt.Tooltip("year:Q", title="年", format="d"),
+                    alt.Tooltip("period_label:N", title="期間"),
+                    alt.Tooltip(f"{_field}:Q", title=f"{_label}（参考値）", format=_number_format),
+                ],
+            )
         )
-    )
-    period_reference = (
-        alt.Chart(reference_periods)
-        .mark_point(shape="triangle-up", size=90, filled=True, color=COLORS["reference"])
-        .encode(
-            x=year_axis,
-            y=alt.Y(f"{_period_metric_name}:Q", title=f"{_period_metric_label}（{_period_unit}）"),
-            tooltip=[
-                alt.Tooltip("year:Q", title="年", format="d"),
-                alt.Tooltip(f"{_period_metric_name}:Q", title=f"{_period_metric_label}（参考値）", format=_period_number_format),
-                alt.Tooltip("status_label:N", title="集計状態"),
-            ],
+        _fixed_period_charts.append(
+            (_lines + _references).properties(title=_label, width="container", height=230)
         )
-    )
-    period_label = period_view["period_label"].head(1).item()
-    period_chart = (period_line + period_reference).properties(
-        title=f"{period_label}の{_period_metric_label}", width="container", height=290
-    )
-    period_panel = mo.vstack(
+    mo.vstack(
         [
             mo.md("## 固定期間で比べる"),
             mo.md(
-                "任意の1か月ではなく、集計範囲を固定した「年間」「梅雨期（6〜7月）」"
-                "「台風期（8〜10月）」で、雨の量・頻度・強さを長期比較します。"
+                "「年間」「梅雨期（6〜7月）」「台風期（8〜10月）」を、4つの指標ですべて表示します。"
                 "▲は年途中または欠測を含む参考値です。"
             ),
-            period_controls,
-            period_chart,
+            *_fixed_period_charts,
         ],
         gap=2,
     )
-    period_panel
     return
 
 
@@ -783,7 +833,7 @@ def _(mo):
                 - 「降水日数」は、気象庁の現象なし情報から降水現象があったと判断できる日数です。0.0mmでも微量の降水現象があれば含みます。
                 - 「降水1日あたりの平均降水量」は `期間降水量 ÷ 降水日数` です。0.0mmでも降水現象が観測された日は分母に含めます。
                 - 0.0mm超の日だけを分母にする平均値もデータ上は補助指標として保持しますが、画面の主要指標には使用しません。
-                - 灰色の累積帯は、完全年の各月日における累積降水量の25〜75%点です。日降水量の分布ではありません。
+                - 灰色の累積帯は、1年分の観測がそろった年について、各月日の累積降水量を並べた25〜75%点です。日降水量の分布ではありません。
                 """
             )
         }
