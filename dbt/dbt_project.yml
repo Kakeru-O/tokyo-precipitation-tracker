@@ -1,0 +1,23 @@
+name: tokyo_precipitation_tracker
+version: 0.1.0
+profile: tokyo_precipitation_tracker
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages", "logs"]
+
+vars:
+  processed_jma_tokyo_glob: "data/processed/jma_tokyo_precipitation_*.csv"
+
+models:
+  tokyo_precipitation_tracker:
+    +materialized: view
+    stg:
+      +schema: stg
+    int:
+      +schema: int
+    mart:
+      +schema: mart
+      +materialized: table

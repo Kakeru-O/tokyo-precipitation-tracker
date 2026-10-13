@@ -1,0 +1,2 @@
+# Preserve the downloaded JMA originals byte-for-byte (CP932 + CRLF).
+data/raw/*.csv binary

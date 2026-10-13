@@ -1,0 +1,153 @@
+version: 2
+
+models:
+  - name: stg_jma_tokyo_daily_precipitation
+    description: "気象庁CSVの値・現象なし情報・品質情報・ファイル内均質番号を保持する日別staging。"
+    tests:
+      - expression_is_true:
+          arguments:
+            expression: "precipitation_mm >= 0"
+    columns:
+      - name: observed_date
+        tests: [not_null, unique]
+      - name: precipitation_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1000
+      - name: phenomenon_none_code
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: quality_code
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 4, 5, 8]
+      - name: quality_status
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [normal, quasi_normal, insufficient, questionable, missing, not_applicable]
+      - name: source_file
+        tests: [not_null]
+
+  - name: int_tokyo_daily_precipitation_features
+    columns:
+      - name: observed_date
+        tests: [not_null, unique]
+      - name: cumulative_precipitation_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: cumulative_precipitation_days
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 366
+
+  - name: int_tokyo_precipitation_streaks
+    description: "欠測・疑問値・資料不足と日付欠落で分断した、年をまたぐ降水現象／無降水streak。"
+    tests:
+      - expression_is_true:
+          arguments:
+            expression: "streak_length = date_diff('day', streak_start_date, streak_end_date) + 1"
+    columns:
+      - name: streak_type
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [precipitation, no_precipitation]
+      - name: streak_length
+        tests:
+          - not_null
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+  - name: int_tokyo_monthly_precipitation
+    columns:
+      - name: month_start
+        tests: [not_null, unique]
+      - name: precipitation_days
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 31
+      - name: measurable_precipitation_days
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 31
+
+  - name: int_tokyo_annual_precipitation
+    tests:
+      - expression_is_true:
+          arguments:
+            expression: "precipitation_days >= measurable_precipitation_days"
+      - expression_is_true:
+          arguments:
+            expression: "rows_present = complete_observation_days + quasi_normal_days + insufficient_days + questionable_days + missing_days"
+      - expression_is_true:
+          arguments:
+            expression: "period_end_date >= period_start_date"
+    columns:
+      - name: year
+        tests: [not_null, unique]
+      - name: rows_present
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 366
+      - name: period_start_date
+        tests: [not_null]
+      - name: period_end_date
+        tests: [not_null]
+      - name: is_complete_calendar_year
+        tests: [not_null]
+      - name: annual_precipitation_mm
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+      - name: precipitation_days
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 366
+
+  - name: mart_tokyo_precipitation_annual_metrics
+    columns:
+      - name: year
+        tests: [not_null, unique]
+      - name: longest_precipitation_streak_days
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 1
+      - name: longest_no_precipitation_streak_days
+        tests:
+          - accepted_range:
+              arguments:
+                min_value: 1
+
+  - name: mart_tokyo_precipitation_daily_cumulative
+    columns:
+      - name: observed_date
+        tests: [not_null, unique]
+
+  - name: mart_tokyo_precipitation_monthly_metrics
+    columns:
+      - name: month_start
+        tests: [not_null, unique]

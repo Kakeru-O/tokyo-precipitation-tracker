@@ -205,6 +205,13 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Project-generated artifacts
+tokyo_precipitation.duckdb
+data/pages/
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
 # Ruff stuff:
 .ruff_cache/
 

@@ -1,0 +1,13 @@
+date,precipitation_mm,precipitation_mm_raw,phenomenon_none_code,quality_code,homogeneity_number,source_file
+2026-10-01,0.0,0.0,0,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-02,0.0,0.0,0,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-03,0.0,0,1,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-04,0.0,0,1,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-05,1.5,1.5,0,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-06,0.0,0.0,0,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-07,0.0,0.0,0,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-08,0.0,0,1,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-09,0.0,0,1,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-10,0.0,0,1,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-11,0.0,0,1,8,1,jma_tokyo_precipitation_20261001-1012.csv
+2026-10-12,0.0,0,1,8,1,jma_tokyo_precipitation_20261001-1012.csv
